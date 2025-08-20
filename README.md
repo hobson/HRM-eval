@@ -73,7 +73,7 @@ The raw data to replicate our results are public concept-arc and ARC-AGI-v1 data
 ```bash
 # Dataset Preparation
 python -m dataset.build_arc_dataset \
-  --input-file-prefix kaggle/input \
+  --input-file-prefix kaggle/input/arc-agi \
   --output-dir data/arc-aug-1000 \
   --subsets concept training evaluation \
   --test-set-name evaluation
