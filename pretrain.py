@@ -638,4 +638,16 @@ def launch(hydra_config: DictConfig):
 
 
 if __name__ == "__main__":
-    launch()
+    # https://docs.pytorch.org/docs/stable/elastic/errors.html
+    from torch.distributed.elastic.multiprocessing.errors import get_error_handler, ChildFailedError
+    error_handler = get_error_handler()
+    error_handler.initialize()
+    try:
+        launch()
+    except ChildFailedError as e:
+        _, failure = e.get_first_failure()
+        error_handler.dump_error_file(failure.error_file, failure.exitcode)
+        raise
+    except Exception as e:
+        error_handler.record_exception(e)
+        raise

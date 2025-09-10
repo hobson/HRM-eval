@@ -1,0 +1,7 @@
+data
+checkpoints
+dataset/raw-data
+outputs
+wandb
+.env
+__pycache__
