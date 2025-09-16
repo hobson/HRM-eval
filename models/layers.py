@@ -48,12 +48,12 @@ class CastedLinear(nn.Module):
         super().__init__()
         # Truncated LeCun normal init
         self.weight = nn.Parameter(
-            trunc_normal_init_(torch.empty((out_features, in_features)), std=1.0 / (in_features ** 0.5))
+            trunc_normal_init_(torch.empty((out_features, in_features), device="cpu"), std=1.0 / (in_features ** 0.5))
         )
         self.bias = None
         if bias:
             # Zero init bias
-            self.bias = nn.Parameter(torch.zeros((out_features, )))
+            self.bias = nn.Parameter(torch.zeros((out_features,), device="cpu"))
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return F.linear(input, self.weight.to(input.dtype), bias=self.bias.to(input.dtype) if self.bias is not None else None)
@@ -70,7 +70,7 @@ class CastedEmbedding(nn.Module):
 
         # Truncated LeCun normal init
         self.embedding_weight = nn.Parameter(
-            trunc_normal_init_(torch.empty((num_embeddings, embedding_dim)), std=init_std)
+            trunc_normal_init_(torch.empty((num_embeddings, embedding_dim), device='cpu'), std=init_std)
         )
         
     def forward(self, input: torch.Tensor) -> torch.Tensor:

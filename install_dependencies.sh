@@ -6,16 +6,16 @@
 
 # # Step 1: set up a venv.
 # sudo snap install astral-uv --classic
-uv venv .venv -p 3.12
-source .venv/bin/activate
+# uv venv .venv -p 3.12
+# source .venv/bin/activate
 
 # Step 2: install dependencies for flash attention
 sudo apt install python3-dev -y
 
 # Step 3: install pytorch
-# PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu126
+# PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
 # uv pip install torch torchvision torchaudio --index-url $PYTORCH_INDEX_URL
-uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 
 # Step 4: install dependencies for adam-atan2
 uv pip install packaging ninja wheel setuptools setuptools-scm
