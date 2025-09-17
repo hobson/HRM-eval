@@ -13,8 +13,17 @@ import torch.nn.functional as F
 #    # flash_attn_func(q, k, v, dropout_p=0.0, softmax_scale=None, causal=False, window_size=(-1, -1), softcap=0.0, alibi_slopes=None, deterministic=False, return_attn_probs=False)
 
 # TODO: make torch.nn.MultiheadAttention().forward compatible with this API:
-#   flash_attn_func(q, k, v, dropout_p=0.0, softmax_scale=None, causal=False, window_size=(-1, -1), softcap=0.0, alibi_slopes=None, deterministic=False, return_attn_probs=False)
+#   flash_attn_func(
+#     q,                   k,                 v,
+#     dropout_p=0.0, softmax_scale=None, causal=False, window_size=(-1, -1), softcap=0.0, alibi_slopes=None, deterministic=False, return_attn_probs=False)
+# MultiheadAttention().forward(self,
+#     query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
+#     key_padding_mask: Optional[torch.Tensor] = None, need_weights: bool = True, attn_mask: Optional[torch.Tensor] = None,
+#         average_attn_weights: bool = True, is_causal: bool = False
+#         ) -> tuple[torch.Tensor, typing.Optional[torch.Tensor]]
 from flash_attn import flash_attn_func  # type: ignore[import]
+
+from torch.nn import MultiheadAttention
 
 from models.common import trunc_normal_init_
 
@@ -140,6 +149,9 @@ class Attention(nn.Module):
         # attn_output: [batch_size, num_heads, seq_len, head_dim]
         attn_output = attn_output.view(batch_size, seq_len, self.output_size)  # type: ignore
         return self.o_proj(attn_output)
+
+
+Attention = MultiheadAttention
 
 
 class SwiGLU(nn.Module):
