@@ -4,11 +4,17 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-try:
-    from flash_attn_interface import flash_attn_func  # type: ignore[import]
-except ImportError:
-    # Fallback to FlashAttention 2
-    from flash_attn import flash_attn_func  # type: ignore[import]
+# HL: commented out so we only have to worry about one flash_attn_func
+# try:
+#     from flash_attn_interface import flash_attn_func  # type: ignore[import]
+# except ImportError:
+#    # Fallback to FlashAttention 2
+#    from flash_attn import flash_attn_func  # type: ignore[import]
+#    # flash_attn_func(q, k, v, dropout_p=0.0, softmax_scale=None, causal=False, window_size=(-1, -1), softcap=0.0, alibi_slopes=None, deterministic=False, return_attn_probs=False)
+
+# TODO: make torch.nn.MultiheadAttention().forward compatible with this API:
+#   flash_attn_func(q, k, v, dropout_p=0.0, softmax_scale=None, causal=False, window_size=(-1, -1), softcap=0.0, alibi_slopes=None, deterministic=False, return_attn_probs=False)
+from flash_attn import flash_attn_func  # type: ignore[import]
 
 from models.common import trunc_normal_init_
 
