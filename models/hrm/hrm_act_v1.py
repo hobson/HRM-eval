@@ -8,7 +8,7 @@ from torch import nn
 from pydantic import BaseModel
 
 from models.common import trunc_normal_init_
-from models.layers import rms_norm, SwiGLU, Attention, RotaryEmbedding, CosSin, CastedEmbedding, CastedLinear
+from models.layers import rms_norm, SwiGLU, Attention, MultiheadAttention, RotaryEmbedding, CosSin, CastedEmbedding, CastedLinear
 from models.sparse_embedding import CastedSparseEmbedding
 
 
@@ -63,13 +63,17 @@ class HierarchicalReasoningModel_ACTV1Block(nn.Module):
     def __init__(self, config: HierarchicalReasoningModel_ACTV1Config) -> None:
         super().__init__()
 
-        self.self_attn = Attention(
-            hidden_size=config.hidden_size,
-            head_dim=config.hidden_size // config.num_heads,
+        self.self_attn = MultiheadAttention(
+            embed_dim=config.hidden_size,
             num_heads=config.num_heads,
-            num_key_value_heads=config.num_heads,
-            causal=False
-        )
+            )
+#         self.self_attn = Attention(
+#             hidden_size=config.hidden_size,
+#             head_dim=config.hidden_size // config.num_heads,
+#             num_heads=config.num_heads,
+#             num_key_value_heads=config.num_heads,
+#             causal=False
+#        )
         self.mlp = SwiGLU(
             hidden_size=config.hidden_size,
             expansion=config.expansion,

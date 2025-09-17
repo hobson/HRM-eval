@@ -151,9 +151,6 @@ class Attention(nn.Module):
         return self.o_proj(attn_output)
 
 
-Attention = MultiheadAttention
-
-
 class SwiGLU(nn.Module):
     def __init__(self, hidden_size: int, expansion: float):
         super().__init__()
