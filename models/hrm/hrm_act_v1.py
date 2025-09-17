@@ -63,10 +63,12 @@ class HierarchicalReasoningModel_ACTV1Block(nn.Module):
     def __init__(self, config: HierarchicalReasoningModel_ACTV1Config) -> None:
         super().__init__()
 
-        self.self_attn = MultiheadAttention(
-            embed_dim=config.hidden_size,
-            num_heads=config.num_heads,
-            )
+        self.self_attn = nn.MultiheadAttention(
+      				embed_dim=config.hidden_size,
+      				num_heads=config.num_heads,
+      				batch_first=True,
+      				dropout=0.0
+ 			 )
         # Cast to the correct dtype after creation
         #self.self_attn = self.self_attn.to(dtype=getattr(torch, config.forward_dtype)) 
         self.self_attn = self.self_attn.to(dtype=torch.bfloat16) 
@@ -89,8 +91,10 @@ class HierarchicalReasoningModel_ACTV1Block(nn.Module):
         # Self Attention
         # HL changed: hidden_states = rms_norm(hidden_states + self.self_attn(cos_sin=cos_sin, hidden_states=hidden_states), variance_epsilon=self.norm_eps)
         # FIXME: q, k, v = hidden_states (flash attention must have different structure for hidden_states if the tensors can be added
-        q= k= v = hidden_states
-        hidden_states = rms_norm(hidden_states + self.self_attn(q, k, v)[0], variance_epsilon=self.norm_eps)
+        #q= k= v = hidden_states
+        #hidden_states = rms_norm(hidden_states + self.self_attn(q, k, v)[0], variance_epsilon=self.norm_eps)
+        attn_output, _ = self.self_attn(hidden_states, hidden_states, hidden_states, need_weights=False)
+        hidden_states = rms_norm(hidden_states + attn_output, variance_epsilon=self.norm_eps)
         # Fully Connected
         hidden_states = rms_norm(hidden_states + self.mlp(hidden_states), variance_epsilon=self.norm_eps)
         return hidden_states

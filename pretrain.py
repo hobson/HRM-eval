@@ -418,7 +418,6 @@ def evaluate(
             )
 
         del save_preds
-
         # Reduce to rank 0
         if metric_values is not None:
             if world_size > 1:
