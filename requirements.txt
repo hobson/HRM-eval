@@ -12,6 +12,8 @@ tqdm
 pyyaml
 argdantic
 
+huggingface_hub
+
 # For building flash-attention and adam-atan2
 packaging
 ninja
