@@ -16,7 +16,7 @@ import coolname
 import hydra
 import pydantic
 from omegaconf import DictConfig
-from adam_atan2 import AdamATan2
+from adam_atan2_pytorch import AdamAtan2
 
 from puzzle_dataset import PuzzleDataset, PuzzleDatasetConfig, PuzzleDatasetMetadata
 from utils.functions import load_model_class, get_model_source_path
@@ -144,9 +144,9 @@ def create_model(config: PretrainConfig, train_metadata: PuzzleDatasetMetadata, 
             weight_decay=config.puzzle_emb_weight_decay,
             world_size=world_size,
         ),
-        AdamATan2(
+        AdamAtan2(
             model.parameters(),
-            lr=0,  # Needs to be set by scheduler
+            lr=1e-8,  # Needs to be set by scheduler
             weight_decay=config.weight_decay,
             betas=(config.beta1, config.beta2),
         ),
@@ -270,7 +270,7 @@ def train_batch(
         return
 
     # To device
-    batch = {k: v.cuda() for k, v in batch.items()}
+    batch = {k: v.cpu() for k, v in batch.items()}
 
     # Init carry if it is None
     if train_state.carry is None:
@@ -362,7 +362,7 @@ def evaluate(
                 print(f"Processing batch {processed_batches}: {set_name}")
             
             # To device
-            batch = {k: v.cuda() for k, v in batch.items()}
+            batch = {k: v.cpu() for k, v in batch.items()}
             with torch.device("cuda"):
                 carry = train_state.model.initial_carry(batch)  # type: ignore
 
@@ -399,7 +399,7 @@ def evaluate(
                     sorted(metrics.keys())
                 )  # Sort keys to guarantee all processes use the same order.
                 metric_values = torch.zeros(
-                    (len(set_ids), len(metrics.values())), dtype=torch.float32, device="cuda"
+                    (len(set_ids), len(metrics.values())), dtype=torch.float32, device="gpu"
                 )
 
             metric_values[set_id] += torch.stack([metrics[k] for k in metric_keys])
@@ -496,6 +496,9 @@ def save_code_and_config(config: PretrainConfig):
 
 def load_synced_config(hydra_config: DictConfig, rank: int, world_size: int) -> PretrainConfig:
     objects = [None]
+    print(hydra_config)
+    print(f'rank: {rank}')
+    print(f'world_size: {world_size}')
     if rank == 0:
         config = PretrainConfig(**hydra_config)  # type: ignore
 
@@ -529,7 +532,7 @@ def launch(hydra_config: DictConfig):
         RANK = dist.get_rank()
         WORLD_SIZE = dist.get_world_size()
 
-        torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
+        # torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
 
         # CPU GLOO process group
         CPU_PROCESS_GROUP = dist.new_group(backend="gloo")
@@ -638,4 +641,16 @@ def launch(hydra_config: DictConfig):
 
 
 if __name__ == "__main__":
-    launch()
+    # https://docs.pytorch.org/docs/stable/elastic/errors.html
+    from torch.distributed.elastic.multiprocessing.errors import get_error_handler, ChildFailedError
+    error_handler = get_error_handler()
+    error_handler.initialize()
+    try:
+        launch()
+    except ChildFailedError as e:
+        _, failure = e.get_first_failure()
+        error_handler.dump_error_file(failure.error_file, failure.exitcode)
+        raise
+    except Exception as e:
+        error_handler.record_exception(e)
+        raise

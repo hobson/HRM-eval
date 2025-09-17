@@ -8,7 +8,7 @@ from torch import nn
 from pydantic import BaseModel
 
 from models.common import trunc_normal_init_
-from models.layers import rms_norm, SwiGLU, Attention, RotaryEmbedding, CosSin, CastedEmbedding, CastedLinear
+from models.layers import rms_norm, SwiGLU, Attention, MultiheadAttention, RotaryEmbedding, CosSin, CastedEmbedding, CastedLinear
 from models.sparse_embedding import CastedSparseEmbedding
 
 
@@ -63,13 +63,17 @@ class HierarchicalReasoningModel_ACTV1Block(nn.Module):
     def __init__(self, config: HierarchicalReasoningModel_ACTV1Config) -> None:
         super().__init__()
 
-        self.self_attn = Attention(
-            hidden_size=config.hidden_size,
-            head_dim=config.hidden_size // config.num_heads,
+        self.self_attn = MultiheadAttention(
+            embed_dim=config.hidden_size,
             num_heads=config.num_heads,
-            num_key_value_heads=config.num_heads,
-            causal=False
-        )
+            )
+#         self.self_attn = Attention(
+#             hidden_size=config.hidden_size,
+#             head_dim=config.hidden_size // config.num_heads,
+#             num_heads=config.num_heads,
+#             num_key_value_heads=config.num_heads,
+#             causal=False
+#        )
         self.mlp = SwiGLU(
             hidden_size=config.hidden_size,
             expansion=config.expansion,
@@ -77,9 +81,13 @@ class HierarchicalReasoningModel_ACTV1Block(nn.Module):
         self.norm_eps = config.rms_norm_eps
 
     def forward(self, cos_sin: CosSin, hidden_states: torch.Tensor) -> torch.Tensor:
+
         # Post Norm
         # Self Attention
-        hidden_states = rms_norm(hidden_states + self.self_attn(cos_sin=cos_sin, hidden_states=hidden_states), variance_epsilon=self.norm_eps)
+        # HL changed: hidden_states = rms_norm(hidden_states + self.self_attn(cos_sin=cos_sin, hidden_states=hidden_states), variance_epsilon=self.norm_eps)
+        # FIXME: q, k, v = hidden_states (flash attention must have different structure for hidden_states if the tensors can be added
+        q, k, v = hidden_states
+        hidden_states = rms_norm(hidden_states + self.self_attn(q, k, v), variance_epsilon=self.norm_eps)
         # Fully Connected
         hidden_states = rms_norm(hidden_states + self.mlp(hidden_states), variance_epsilon=self.norm_eps)
         return hidden_states
@@ -169,8 +177,8 @@ class HierarchicalReasoningModel_ACTV1_Inner(nn.Module):
 
     def empty_carry(self, batch_size: int):
         return HierarchicalReasoningModel_ACTV1InnerCarry(
-            z_H=torch.empty(batch_size, self.config.seq_len + self.puzzle_emb_len, self.config.hidden_size, dtype=self.forward_dtype),
-            z_L=torch.empty(batch_size, self.config.seq_len + self.puzzle_emb_len, self.config.hidden_size, dtype=self.forward_dtype),
+            z_H=torch.empty(batch_size, self.config.seq_len + self.puzzle_emb_len, self.config.hidden_size, dtype=self.forward_dtype, device='cpu'),
+            z_L=torch.empty(batch_size, self.config.seq_len + self.puzzle_emb_len, self.config.hidden_size, dtype=self.forward_dtype, device='cpu'),
         )
         
     def reset_carry(self, reset_flag: torch.Tensor, carry: HierarchicalReasoningModel_ACTV1InnerCarry):
@@ -233,8 +241,8 @@ class HierarchicalReasoningModel_ACTV1(nn.Module):
         return HierarchicalReasoningModel_ACTV1Carry(
             inner_carry=self.inner.empty_carry(batch_size),  # Empty is expected, it will be reseted in first pass as all sequences are halted.
             
-            steps=torch.zeros((batch_size, ), dtype=torch.int32),
-            halted=torch.ones((batch_size, ), dtype=torch.bool),  # Default to halted
+            steps=torch.zeros((batch_size, ), dtype=torch.int32,device='cpu'),
+            halted=torch.ones((batch_size, ), dtype=torch.bool,device='cpu'),  # Default to halted
             
             current_data={k: torch.empty_like(v) for k, v in batch.items()}
         )

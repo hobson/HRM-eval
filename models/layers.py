@@ -4,11 +4,26 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-try:
-    from flash_attn_interface import flash_attn_func  # type: ignore[import]
-except ImportError:
-    # Fallback to FlashAttention 2
-    from flash_attn import flash_attn_func  # type: ignore[import]
+# HL: commented out so we only have to worry about one flash_attn_func
+# try:
+#     from flash_attn_interface import flash_attn_func  # type: ignore[import]
+# except ImportError:
+#    # Fallback to FlashAttention 2
+#    from flash_attn import flash_attn_func  # type: ignore[import]
+#    # flash_attn_func(q, k, v, dropout_p=0.0, softmax_scale=None, causal=False, window_size=(-1, -1), softcap=0.0, alibi_slopes=None, deterministic=False, return_attn_probs=False)
+
+# TODO: make torch.nn.MultiheadAttention().forward compatible with this API:
+#   flash_attn_func(
+#     q,                   k,                 v,
+#     dropout_p=0.0, softmax_scale=None, causal=False, window_size=(-1, -1), softcap=0.0, alibi_slopes=None, deterministic=False, return_attn_probs=False)
+# MultiheadAttention().forward(self,
+#     query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
+#     key_padding_mask: Optional[torch.Tensor] = None, need_weights: bool = True, attn_mask: Optional[torch.Tensor] = None,
+#         average_attn_weights: bool = True, is_causal: bool = False
+#         ) -> tuple[torch.Tensor, typing.Optional[torch.Tensor]]
+from flash_attn import flash_attn_func  # type: ignore[import]
+
+from torch.nn import MultiheadAttention
 
 from models.common import trunc_normal_init_
 
@@ -48,12 +63,12 @@ class CastedLinear(nn.Module):
         super().__init__()
         # Truncated LeCun normal init
         self.weight = nn.Parameter(
-            trunc_normal_init_(torch.empty((out_features, in_features)), std=1.0 / (in_features ** 0.5))
+            trunc_normal_init_(torch.empty((out_features, in_features), device="cpu"), std=1.0 / (in_features ** 0.5))
         )
         self.bias = None
         if bias:
             # Zero init bias
-            self.bias = nn.Parameter(torch.zeros((out_features, )))
+            self.bias = nn.Parameter(torch.zeros((out_features,), device="cpu"))
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return F.linear(input, self.weight.to(input.dtype), bias=self.bias.to(input.dtype) if self.bias is not None else None)
@@ -70,7 +85,7 @@ class CastedEmbedding(nn.Module):
 
         # Truncated LeCun normal init
         self.embedding_weight = nn.Parameter(
-            trunc_normal_init_(torch.empty((num_embeddings, embedding_dim)), std=init_std)
+            trunc_normal_init_(torch.empty((num_embeddings, embedding_dim), device='cpu'), std=init_std)
         )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
