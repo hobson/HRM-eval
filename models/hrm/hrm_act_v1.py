@@ -67,7 +67,10 @@ class HierarchicalReasoningModel_ACTV1Block(nn.Module):
             embed_dim=config.hidden_size,
             num_heads=config.num_heads,
             )
-#         self.self_attn = Attention(
+        # Cast to the correct dtype after creation
+        #self.self_attn = self.self_attn.to(dtype=getattr(torch, config.forward_dtype)) 
+        self.self_attn = self.self_attn.to(dtype=torch.bfloat16) 
+#        self.self_attn = Attention(
 #             hidden_size=config.hidden_size,
 #             head_dim=config.hidden_size // config.num_heads,
 #             num_heads=config.num_heads,
@@ -86,8 +89,8 @@ class HierarchicalReasoningModel_ACTV1Block(nn.Module):
         # Self Attention
         # HL changed: hidden_states = rms_norm(hidden_states + self.self_attn(cos_sin=cos_sin, hidden_states=hidden_states), variance_epsilon=self.norm_eps)
         # FIXME: q, k, v = hidden_states (flash attention must have different structure for hidden_states if the tensors can be added
-        q, k, v = hidden_states
-        hidden_states = rms_norm(hidden_states + self.self_attn(q, k, v), variance_epsilon=self.norm_eps)
+        q= k= v = hidden_states
+        hidden_states = rms_norm(hidden_states + self.self_attn(q, k, v)[0], variance_epsilon=self.norm_eps)
         # Fully Connected
         hidden_states = rms_norm(hidden_states + self.mlp(hidden_states), variance_epsilon=self.norm_eps)
         return hidden_states
