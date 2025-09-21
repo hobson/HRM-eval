@@ -9,6 +9,7 @@ import torch
 import torch.distributed as dist
 from torch import nn
 from torch.utils.data import DataLoader
+from torch.optim import Adam
 
 import tqdm
 import wandb
@@ -16,7 +17,6 @@ import coolname
 import hydra
 import pydantic
 from omegaconf import DictConfig
-from adam_atan2_pytorch import AdamAtan2
 
 from puzzle_dataset import PuzzleDataset, PuzzleDatasetConfig, PuzzleDatasetMetadata
 from utils.functions import load_model_class, get_model_source_path
@@ -144,7 +144,7 @@ def create_model(config: PretrainConfig, train_metadata: PuzzleDatasetMetadata, 
             weight_decay=config.puzzle_emb_weight_decay,
             world_size=world_size,
         ),
-        AdamAtan2(
+        Adam(
             model.parameters(),
             lr=1e-8,  # Needs to be set by scheduler
             weight_decay=config.weight_decay,
@@ -355,12 +355,12 @@ def evaluate(
 
         carry = None
         processed_batches = 0
-        
+
         for set_name, batch, global_batch_size in eval_loader:
             processed_batches += 1
             if rank == 0:
                 print(f"Processing batch {processed_batches}: {set_name}")
-            
+
             # To device
             batch = {k: v.cpu() for k, v in batch.items()}
             with torch.device("cuda"):
@@ -418,6 +418,7 @@ def evaluate(
             )
 
         del save_preds
+
         # Reduce to rank 0
         if metric_values is not None:
             if world_size > 1:
@@ -441,11 +442,11 @@ def evaluate(
         # Run evaluators
         if rank == 0:
             print(f"\nRunning {len(evaluators)} evaluator(s)...")
-            
+
         for i, evaluator in enumerate(evaluators):
             if rank == 0:
                 print(f"Running evaluator {i+1}/{len(evaluators)}: {evaluator.__class__.__name__}")
-                
+
             # Path for saving
             evaluator_save_path = None
             if config.checkpoint_path is not None:
@@ -463,7 +464,7 @@ def evaluate(
 
                 reduced_metrics.update(metrics)
                 print(f"  Completed {evaluator.__class__.__name__}")
-                
+
         if rank == 0:
             print("All evaluators completed!")
 
@@ -601,7 +602,7 @@ def launch(hydra_config: DictConfig):
     for _iter_id in range(total_iters):
         print(f"[Rank {RANK}, World Size {WORLD_SIZE}]: Epoch {_iter_id * train_epochs_per_iter}")
 
-        ############ Train Iter
+        # Train Iter
         train_state.model.train()
         for set_name, batch, global_batch_size in train_loader:
             metrics = train_batch(
@@ -612,7 +613,7 @@ def launch(hydra_config: DictConfig):
                 wandb.log(metrics, step=train_state.step)
                 progress_bar.update(train_state.step - progress_bar.n)  # type: ignore
 
-        ############ Evaluation
+        # Evaluation
         if eval_loader is not None and eval_metadata is not None:
             train_state.model.eval()
             metrics = evaluate(
@@ -629,7 +630,7 @@ def launch(hydra_config: DictConfig):
             if RANK == 0 and metrics is not None:
                 wandb.log(metrics, step=train_state.step)
 
-        ############ Checkpointing
+        # Checkpointing
         if RANK == 0 and (config.checkpoint_every_eval or (_iter_id == total_iters - 1)):
             save_train_state(config, train_state)
 

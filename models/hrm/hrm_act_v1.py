@@ -1,4 +1,4 @@
-from typing import Tuple, List, Dict, Optional
+from typing import Tuple, List, Dict  # , Optional
 from dataclasses import dataclass
 import math
 
@@ -8,7 +8,8 @@ from torch import nn
 from pydantic import BaseModel
 
 from models.common import trunc_normal_init_
-from models.layers import rms_norm, SwiGLU, Attention, MultiheadAttention, RotaryEmbedding, CosSin, CastedEmbedding, CastedLinear
+from models.layers import rms_norm, SwiGLU  # , Attention (flash_attn.Attention)
+from models.layers import RotaryEmbedding, CosSin, CastedEmbedding, CastedLinear
 from models.sparse_embedding import CastedSparseEmbedding
 
 
@@ -21,10 +22,10 @@ class HierarchicalReasoningModel_ACTV1InnerCarry:
 @dataclass
 class HierarchicalReasoningModel_ACTV1Carry:
     inner_carry: HierarchicalReasoningModel_ACTV1InnerCarry
-    
+
     steps: torch.Tensor
     halted: torch.Tensor
-    
+
     current_data: Dict[str, torch.Tensor]
 
 
@@ -49,7 +50,7 @@ class HierarchicalReasoningModel_ACTV1Config(BaseModel):
 
     rms_norm_eps: float = 1e-5
     rope_theta: float = 10000.0
-    
+
     # Halting Q-learning config
     halt_max_steps: int
     halt_exploration_prob: float
@@ -64,14 +65,14 @@ class HierarchicalReasoningModel_ACTV1Block(nn.Module):
         super().__init__()
 
         self.self_attn = nn.MultiheadAttention(
-      				embed_dim=config.hidden_size,
-      				num_heads=config.num_heads,
-      				batch_first=True,
-      				dropout=0.0
- 			 )
+            embed_dim=config.hidden_size,
+            num_heads=config.num_heads,
+            batch_first=True,
+            dropout=0.0
+        )
         # Cast to the correct dtype after creation
-        #self.self_attn = self.self_attn.to(dtype=getattr(torch, config.forward_dtype)) 
-        self.self_attn = self.self_attn.to(dtype=torch.bfloat16) 
+        # self.self_attn = self.self_attn.to(dtype=getattr(torch, config.forward_dtype))
+        self.self_attn = self.self_attn.to(dtype=torch.bfloat16)
 #        self.self_attn = Attention(
 #             hidden_size=config.hidden_size,
 #             head_dim=config.hidden_size // config.num_heads,
@@ -89,10 +90,12 @@ class HierarchicalReasoningModel_ACTV1Block(nn.Module):
 
         # Post Norm
         # Self Attention
-        # HL changed: hidden_states = rms_norm(hidden_states + self.self_attn(cos_sin=cos_sin, hidden_states=hidden_states), variance_epsilon=self.norm_eps)
+        # HL changed: hidden_states = rms_norm(
+        #    hidden_states + self.self_attn(cos_sin=cos_sin, hidden_states=hidden_states), variance_epsilon=self.norm_eps)
         # FIXME: q, k, v = hidden_states (flash attention must have different structure for hidden_states if the tensors can be added
-        #q= k= v = hidden_states
-        #hidden_states = rms_norm(hidden_states + self.self_attn(q, k, v)[0], variance_epsilon=self.norm_eps)
+        # q= k= v = hidden_states
+        # hidden_states = rms_norm(
+        #     hidden_states + self.self_attn(q, k, v)[0], variance_epsilon=self.norm_eps)
         attn_output, _ = self.self_attn(hidden_states, hidden_states, hidden_states, need_weights=False)
         hidden_states = rms_norm(hidden_states + attn_output, variance_epsilon=self.norm_eps)
         # Fully Connected
@@ -120,15 +123,16 @@ class HierarchicalReasoningModel_ACTV1_Inner(nn.Module):
     def __init__(self, config: HierarchicalReasoningModel_ACTV1Config) -> None:
         super().__init__()
         self.config = config
+        print(config)
         self.forward_dtype = getattr(torch, self.config.forward_dtype)
 
         # I/O
-        self.embed_scale  = math.sqrt(self.config.hidden_size)
+        self.embed_scale = math.sqrt(self.config.hidden_size)
         embed_init_std = 1.0 / self.embed_scale
 
         self.embed_tokens = CastedEmbedding(self.config.vocab_size, self.config.hidden_size, init_std=embed_init_std, cast_to=self.forward_dtype)
-        self.lm_head      = CastedLinear(self.config.hidden_size, self.config.vocab_size, bias=False)
-        self.q_head       = CastedLinear(self.config.hidden_size, 2, bias=True)
+        self.lm_head = CastedLinear(self.config.hidden_size, self.config.vocab_size, bias=False)
+        self.q_head = CastedLinear(self.config.hidden_size, 2, bias=True)
 
         self.puzzle_emb_len = -(self.config.puzzle_emb_ndim // -self.config.hidden_size)  # ceil div
         if self.config.puzzle_emb_ndim > 0:
@@ -142,14 +146,17 @@ class HierarchicalReasoningModel_ACTV1_Inner(nn.Module):
                                               max_position_embeddings=self.config.seq_len + self.puzzle_emb_len,
                                               base=self.config.rope_theta)
         elif self.config.pos_encodings == "learned":
-            self.embed_pos = CastedEmbedding(self.config.seq_len + self.puzzle_emb_len, self.config.hidden_size, init_std=embed_init_std, cast_to=self.forward_dtype)
+            self.embed_pos = CastedEmbedding(self.config.seq_len + self.puzzle_emb_len, self.config.hidden_size,
+                                             init_std=embed_init_std, cast_to=self.forward_dtype)
         else:
             raise NotImplementedError()
 
         # Reasoning Layers
-        self.H_level = HierarchicalReasoningModel_ACTV1ReasoningModule(layers=[HierarchicalReasoningModel_ACTV1Block(self.config) for _i in range(self.config.H_layers)])
-        self.L_level = HierarchicalReasoningModel_ACTV1ReasoningModule(layers=[HierarchicalReasoningModel_ACTV1Block(self.config) for _i in range(self.config.L_layers)])
-        
+        self.H_level = HierarchicalReasoningModel_ACTV1ReasoningModule(
+            layers=[HierarchicalReasoningModel_ACTV1Block(self.config) for _i in range(self.config.H_layers)])
+        self.L_level = HierarchicalReasoningModel_ACTV1ReasoningModule(
+            layers=[HierarchicalReasoningModel_ACTV1Block(self.config) for _i in range(self.config.L_layers)])
+
         # Initial states
         self.H_init = nn.Buffer(trunc_normal_init_(torch.empty(self.config.hidden_size, dtype=self.forward_dtype), std=1), persistent=True)
         self.L_init = nn.Buffer(trunc_normal_init_(torch.empty(self.config.hidden_size, dtype=self.forward_dtype), std=1), persistent=True)
@@ -167,7 +174,7 @@ class HierarchicalReasoningModel_ACTV1_Inner(nn.Module):
         # Puzzle embeddings
         if self.config.puzzle_emb_ndim > 0:
             puzzle_embedding = self.puzzle_emb(puzzle_identifiers)
-            
+
             pad_count = self.puzzle_emb_len * self.config.hidden_size - puzzle_embedding.shape[-1]
             if pad_count > 0:
                 puzzle_embedding = F.pad(puzzle_embedding, (0, pad_count))
@@ -187,14 +194,17 @@ class HierarchicalReasoningModel_ACTV1_Inner(nn.Module):
             z_H=torch.empty(batch_size, self.config.seq_len + self.puzzle_emb_len, self.config.hidden_size, dtype=self.forward_dtype, device='cpu'),
             z_L=torch.empty(batch_size, self.config.seq_len + self.puzzle_emb_len, self.config.hidden_size, dtype=self.forward_dtype, device='cpu'),
         )
-        
+
     def reset_carry(self, reset_flag: torch.Tensor, carry: HierarchicalReasoningModel_ACTV1InnerCarry):
         return HierarchicalReasoningModel_ACTV1InnerCarry(
             z_H=torch.where(reset_flag.view(-1, 1, 1), self.H_init, carry.z_H),
             z_L=torch.where(reset_flag.view(-1, 1, 1), self.L_init, carry.z_L),
         )
 
-    def forward(self, carry: HierarchicalReasoningModel_ACTV1InnerCarry, batch: Dict[str, torch.Tensor]) -> Tuple[HierarchicalReasoningModel_ACTV1InnerCarry, torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    def forward(
+            self, carry: HierarchicalReasoningModel_ACTV1InnerCarry,
+            batch: Dict[str, torch.Tensor]
+    ) -> Tuple[HierarchicalReasoningModel_ACTV1InnerCarry, torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         seq_info = dict(
             cos_sin=self.rotary_emb() if hasattr(self, "rotary_emb") else None,
         )
@@ -226,7 +236,7 @@ class HierarchicalReasoningModel_ACTV1_Inner(nn.Module):
 
         # Q head
         q_logits = self.q_head(z_H[:, 0]).to(torch.float32)
-        
+
         return new_carry, output, (q_logits[..., 0], q_logits[..., 1])
 
 
@@ -247,20 +257,24 @@ class HierarchicalReasoningModel_ACTV1(nn.Module):
 
         return HierarchicalReasoningModel_ACTV1Carry(
             inner_carry=self.inner.empty_carry(batch_size),  # Empty is expected, it will be reseted in first pass as all sequences are halted.
-            
-            steps=torch.zeros((batch_size, ), dtype=torch.int32,device='cpu'),
-            halted=torch.ones((batch_size, ), dtype=torch.bool,device='cpu'),  # Default to halted
-            
+
+            steps=torch.zeros((batch_size, ), dtype=torch.int32, device='cpu'),
+            halted=torch.ones((batch_size, ), dtype=torch.bool, device='cpu'),  # Default to halted
+
             current_data={k: torch.empty_like(v) for k, v in batch.items()}
         )
-        
-    def forward(self, carry: HierarchicalReasoningModel_ACTV1Carry, batch: Dict[str, torch.Tensor], compute_target_q: bool = False) -> Tuple[HierarchicalReasoningModel_ACTV1Carry, Dict[str, torch.Tensor]]:
+
+    def forward(
+            self, carry: HierarchicalReasoningModel_ACTV1Carry,
+            batch: Dict[str, torch.Tensor], compute_target_q: bool = False
+    ) -> Tuple[HierarchicalReasoningModel_ACTV1Carry, Dict[str, torch.Tensor]]:
         # Update data, carry (removing halted sequences)
         new_inner_carry = self.inner.reset_carry(carry.halted, carry.inner_carry)
-        
+
         new_steps = torch.where(carry.halted, 0, carry.steps)
 
-        new_current_data = {k: torch.where(carry.halted.view((-1, ) + (1, ) * (batch[k].ndim - 1)), batch[k], v) for k, v in carry.current_data.items()}
+        new_current_data = {k: torch.where(carry.halted.view(
+            (-1, ) + (1, ) * (batch[k].ndim - 1)), batch[k], v) for k, v in carry.current_data.items()}
 
         # Forward inner model
         new_inner_carry, logits, (q_halt_logits, q_continue_logits) = self.inner(new_inner_carry, new_current_data)
@@ -270,36 +284,45 @@ class HierarchicalReasoningModel_ACTV1(nn.Module):
             "q_halt_logits": q_halt_logits,
             "q_continue_logits": q_continue_logits
         }
-        
+
         with torch.no_grad():
             # Step
             new_steps = new_steps + 1
             is_last_step = new_steps >= self.config.halt_max_steps
-            
+
             halted = is_last_step
 
             # Check if adaptive computation should be used
-            use_adaptive = (self.config.halt_max_steps > 1) and (
-                (self.training and self.config.act_enabled) or 
-                (not self.training and self.config.act_inference)
+            use_adaptive = (
+                self.config.halt_max_steps > 1
+                and ((self.training and self.config.act_enabled)
+                     or (not self.training and self.config.act_inference)
+                     )
             )
-            
+
             if use_adaptive:
                 # Halt signal based on Q-values (but always halt at max steps)
                 q_halt_signal = q_halt_logits > q_continue_logits
                 halted = halted | q_halt_signal
-                
+
                 # DEBUG: Print halting info
                 if not self.training and new_steps[0] <= 10:  # Only first few steps
-                    print(f"Step {new_steps[0].item()}: max_steps={self.config.halt_max_steps}, is_last={is_last_step[0].item()}, q_halt={q_halt_signal[0].item()}, final_halt={halted[0].item()}")
-                
+                    print(
+                        f"Step {new_steps[0].item()}: "
+                        f"  max_steps={self.config.halt_max_steps},"
+                        f" is_last={is_last_step[0].item()},"
+                        f" q_halt={q_halt_signal[0].item()},"
+                        f" final_halt={halted[0].item()}"
+                    )
+
                 # Store actual steps used for logging (only during inference)
                 if not self.training:
                     outputs["actual_steps"] = new_steps.float()
 
                 # Exploration (only during training)
                 if self.training:
-                    min_halt_steps = (torch.rand_like(q_halt_logits) < self.config.halt_exploration_prob) * torch.randint_like(new_steps, low=2, high=self.config.halt_max_steps + 1)
+                    min_halt_steps = (torch.rand_like(q_halt_logits) < self.config.halt_exploration_prob) * \
+                        torch.randint_like(new_steps, low=2, high=self.config.halt_max_steps + 1)
                     halted = halted & (new_steps >= min_halt_steps)
 
                 # Compute target Q (only during training)
@@ -308,7 +331,8 @@ class HierarchicalReasoningModel_ACTV1(nn.Module):
                 # Similar concept as PQN https://arxiv.org/abs/2407.04811
                 if self.training and compute_target_q:
                     next_q_halt_logits, next_q_continue_logits = self.inner(new_inner_carry, new_current_data)[-1]
-                    
-                    outputs["target_q_continue"] = torch.sigmoid(torch.where(is_last_step, next_q_halt_logits, torch.maximum(next_q_halt_logits, next_q_continue_logits)))
+
+                    outputs["target_q_continue"] = torch.sigmoid(torch.where(
+                        is_last_step, next_q_halt_logits, torch.maximum(next_q_halt_logits, next_q_continue_logits)))
 
         return HierarchicalReasoningModel_ACTV1Carry(new_inner_carry, new_steps, halted, new_current_data), outputs

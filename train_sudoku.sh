@@ -2,7 +2,7 @@
 export datasetname=sudoku-extreme-1k-aug-1000
 if [[ -f data/$datasetname/identifiers.json ]] ; then
   echo "Found data/$datasetname/*.json skipping data prep."
-else ;
+else
   python pretrain.py \
     data_path=data/sudoku-extreme-1k-aug-1000 \
     epochs=20000 \
