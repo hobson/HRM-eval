@@ -101,8 +101,11 @@ def create_dataloader(config: PretrainConfig, split: str, rank: int, world_size:
         split=split,
     )
     dataloader = DataLoader(
-        dataset, batch_size=None, num_workers=1, prefetch_factor=8, pin_memory=True, persistent_workers=True
+        dataset, batch_size=None, num_workers=1, prefetch_factor=8, persistent_workers=True, pin_memory=False,  # pin_memory=True,
     )
+    # On GPU server:
+    #    /home/gpu/code/public-by-others/HRM/.venv/lib/python3.12/site-packages/torch/utils/data/dataloader.py:666:
+    #    UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
     return dataloader, dataset.metadata
 
 
