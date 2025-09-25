@@ -16,7 +16,7 @@ export TORCH_DEVICE="cpu"
 if [[ $TORCH_DEVICE == "cpu" ]] ; then
   export CUDA_VISIBLE_DEVICES=""
 else
-  export CUDA_VISIBLE_DEVICES="1"  
+  export CUDA_VISIBLE_DEVICES="1"
 fi
 
 # # https://github.com/MIC-DKFZ/nnUNet/issues/2349
@@ -36,10 +36,10 @@ fi
 CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
   python pretrain.py \
     data_path=data/$datasetname \
-    epochs=2000 \
-    eval_interval=200 \
-    lr=1e-4 \
-    puzzle_emb_lr=1e-4 \
+    epochs=1000 \
+    eval_interval=100 \
+    lr=1.3e-4 \
+    puzzle_emb_lr=1.25e-4 \
     weight_decay=1.0 \
     puzzle_emb_weight_decay=1.0
 

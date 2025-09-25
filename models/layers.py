@@ -112,6 +112,15 @@ class RotaryEmbedding(nn.Module):
 
 
 class SwiGLU(nn.Module):
+    """
+    hidden_size = 512
+    # num_heads = min(2, hidden_size // 64)
+    num_heads = 8  # 12 in _v2
+    expansion = 4
+    puzzle_emb_ndim = hidden_size
+    """
+    expansion: 4
+
     def __init__(self, hidden_size: int, expansion: float):
         super().__init__()
         inter = _find_multiple(round(expansion * hidden_size * 2 / 3), 256)
